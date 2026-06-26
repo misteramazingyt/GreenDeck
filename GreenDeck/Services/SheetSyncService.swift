@@ -116,10 +116,17 @@ struct SheetSyncService {
 
     // MARK: Row -> Model
 
+    /// Outcome of parsing one CSV row. (Not `Result`, whose failure type must
+    /// conform to `Error`; here the failure is just a human-readable message.)
+    private enum RowResult {
+        case success(BackgroundImage)
+        case failure(String)
+    }
+
     private func makeBackground(
         from row: [String: String],
         existing: [String: BackgroundImage]
-    ) -> Result<BackgroundImage, String> {
+    ) -> RowResult {
         let urlString = (row["image_url"] ?? "").trimmingCharacters(in: .whitespaces)
         guard !urlString.isEmpty, let imageURL = URL(string: urlString) else {
             return .failure("Missing or invalid image_url")
