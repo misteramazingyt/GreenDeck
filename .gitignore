@@ -19,3 +19,8 @@ GreenDeck.xcodeproj/
 # App runtime data (should never be committed)
 *.mov
 *.mp4
+
+# Build output
+dist/
+*.ipa
+Payload/
