@@ -1,0 +1,5 @@
+id,title,image_url,tags,caption,source,status,priority,notes
+sample001,Sample Background 1,https://picsum.photos/1080/1920,"test,vertical",Test caption,Test source,new,10,First test image
+sample002,Sample Background 2,https://picsum.photos/1600/1000,"test,horizontal",Another caption,Test source,new,5,Horizontal crop test
+sample003,Sample Background 3,https://picsum.photos/1200/1200,"test,square",Square caption,Test source,new,7,Square crop test
+roma001,Decadent banquet,https://picsum.photos/seed/rome/1080/1920,"rome,decadence,elite",The empire eats itself,Alma-Tadema,new,8,Use for civilizational decline bit
