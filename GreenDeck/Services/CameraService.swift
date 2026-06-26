@@ -19,6 +19,7 @@ final class CameraService: NSObject, ObservableObject,
     // MARK: Published UI state
     @Published private(set) var isRunning = false
     @Published private(set) var isRecording = false
+    @Published private(set) var isPaused = false
     @Published private(set) var recordingSeconds: TimeInterval = 0
     @Published var errorMessage: String?
     @Published private(set) var currentBackgroundID: String?
@@ -52,11 +53,18 @@ final class CameraService: NSObject, ObservableObject,
     private var mirrorPreview = true
     private var quality: SegmentationQuality = .balanced
     private var segmentationEnabled = true
+    private var personTransform = LayerTransform.identity
+    private var backgroundTransform = LayerTransform.identity
 
     // Recording bookkeeping
     private var recordingStartTime: CMTime?
     private var pendingChangeEvents: [BackgroundChangeEvent] = []
     private var durationTimer: Timer?
+
+    // Pause bookkeeping (touched on sessionQueue; flag is lock-guarded)
+    private var pausedFlag = false
+    private var pausedAccum = CMTime.zero
+    private var pauseMark: CMTime?
 
     // MARK: Configuration
 
@@ -76,6 +84,14 @@ final class CameraService: NSObject, ObservableObject,
 
     func setMirror(_ mirror: Bool) {
         lock.lock(); mirrorPreview = mirror; lock.unlock()
+    }
+
+    func setPersonTransform(_ t: LayerTransform) {
+        lock.lock(); personTransform = t; lock.unlock()
+    }
+
+    func setBackgroundTransform(_ t: LayerTransform) {
+        lock.lock(); backgroundTransform = t; lock.unlock()
     }
 
     /// Set the active background. Pass the already-decoded CIImage and its id.
@@ -169,12 +185,16 @@ final class CameraService: NSObject, ObservableObject,
             if let id = self.currentBackgroundIDUnsafe() {
                 self.pendingChangeEvents.append(BackgroundChangeEvent(timeOffset: 0, backgroundID: id))
             }
+            self.pausedFlag = false
             self.lock.unlock()
+            self.pausedAccum = .zero
+            self.pauseMark = nil
             do {
                 try self.recorder.start(outputSize: size, includeAudio: includeAudio)
                 self.recordingStartTime = nil
                 DispatchQueue.main.async {
                     self.isRecording = true
+                    self.isPaused = false
                     self.recordingSeconds = 0
                     self.startDurationTimer()
                 }
@@ -209,6 +229,16 @@ final class CameraService: NSObject, ObservableObject,
         }
     }
 
+    func pauseRecording() {
+        lock.lock(); pausedFlag = true; lock.unlock()
+        DispatchQueue.main.async { self.isPaused = true }
+    }
+
+    func resumeRecording() {
+        lock.lock(); pausedFlag = false; lock.unlock()
+        DispatchQueue.main.async { self.isPaused = false }
+    }
+
     private func lockedChangeEvents() -> [BackgroundChangeEvent] {
         lock.lock(); defer { lock.unlock() }
         return pendingChangeEvents
@@ -224,8 +254,14 @@ final class CameraService: NSObject, ObservableObject,
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        lock.lock(); let paused = pausedFlag; lock.unlock()
+
         if output === audioOutput {
-            recorder.appendAudio(sampleBuffer)
+            // While paused, drop audio; otherwise shift it by accumulated pause.
+            guard recorder.isRecording, !paused else { return }
+            if let shifted = Self.retime(sampleBuffer, by: pausedAccum) {
+                recorder.appendAudio(shifted)
+            }
             return
         }
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
@@ -236,6 +272,8 @@ final class CameraService: NSObject, ObservableObject,
         let crop = cropMode
         let mirror = mirrorPreview
         let useSegmentation = segmentationEnabled
+        let personT = personTransform
+        let bgT = backgroundTransform
         lock.unlock()
 
         let camera = CIImage(cvPixelBuffer: pixelBuffer)
@@ -247,25 +285,60 @@ final class CameraService: NSObject, ObservableObject,
             background: bg,
             outputSize: size,
             cropMode: crop,
-            mirror: mirror
+            mirror: mirror,
+            personTransform: personT,
+            backgroundTransform: bgT
         )
 
         previewSink?.sendPreview(composited)
 
-        if recorder.isRecording {
-            let time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-            if recordingStartTime == nil { recordingStartTime = time }
-            recorder.appendVideo(composited, at: time)
+        // Track paused time so the recorded timeline has no frozen gap.
+        let sourceTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        if paused {
+            if pauseMark == nil { pauseMark = sourceTime }
+            return
+        } else if let pm = pauseMark {
+            pausedAccum = CMTimeAdd(pausedAccum, CMTimeSubtract(sourceTime, pm))
+            pauseMark = nil
         }
+
+        if recorder.isRecording {
+            let adjusted = CMTimeSubtract(sourceTime, pausedAccum)
+            if recordingStartTime == nil { recordingStartTime = adjusted }
+            recorder.appendVideo(composited, at: adjusted)
+        }
+    }
+
+    /// Return a copy of an audio sample buffer with its timestamps shifted back
+    /// by `offset` (used to remove paused gaps).
+    private static func retime(_ sb: CMSampleBuffer, by offset: CMTime) -> CMSampleBuffer? {
+        if offset == .zero { return sb }
+        var count: CMItemCount = 0
+        CMSampleBufferGetSampleTimingInfoArray(sb, entryCount: 0, arrayToFill: nil, entriesNeededOut: &count)
+        guard count > 0 else { return sb }
+        var timing = [CMSampleTimingInfo](repeating: CMSampleTimingInfo(), count: count)
+        CMSampleBufferGetSampleTimingInfoArray(sb, entryCount: count, arrayToFill: &timing, entriesNeededOut: &count)
+        for i in 0..<count {
+            if timing[i].presentationTimeStamp.isValid {
+                timing[i].presentationTimeStamp = CMTimeSubtract(timing[i].presentationTimeStamp, offset)
+            }
+        }
+        var out: CMSampleBuffer?
+        CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault,
+                                              sampleBuffer: sb,
+                                              sampleTimingEntryCount: count,
+                                              sampleTimingArray: &timing,
+                                              sampleBufferOut: &out)
+        return out
     }
 
     // MARK: Duration timer
 
     private func startDurationTimer() {
         durationTimer?.invalidate()
-        let start = Date()
-        durationTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            self?.recordingSeconds = Date().timeIntervalSince(start)
+        durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self, !self.isPaused else { return }
+            self.recordingSeconds += 0.1
         }
     }
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreImage
+import Combine
 
 /// Central observable store. Owns persisted data + services and exposes
 /// high-level actions to the views.
@@ -33,6 +34,7 @@ final class AppState: ObservableObject {
     private let exporter = ExportService()
     private lazy var sync = SheetSyncService(cache: cache)
     private let discovery = SheetDiscoveryService()
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
         let p = PersistenceService()
@@ -41,6 +43,10 @@ final class AppState: ObservableObject {
         self.decks = p.loadDecks()
         self.segments = p.loadSegments()
         camera.apply(settings: settings)
+        // Forward camera state changes (isRecording/isPaused/timer) to views.
+        camera.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     // MARK: Decks

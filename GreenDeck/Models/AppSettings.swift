@@ -6,6 +6,7 @@ enum CropMode: String, Codable, CaseIterable, Identifiable {
     case fill       // image fills the frame, excess cropped
     case contain    // whole image visible, letterboxed with black
     case blurFill   // blurred enlarged image fills frame, original centered on top
+    case custom     // base fill + user-applied scale/position
 
     var id: String { rawValue }
     var displayName: String {
@@ -13,6 +14,7 @@ enum CropMode: String, Codable, CaseIterable, Identifiable {
         case .fill: return "Fill"
         case .contain: return "Contain"
         case .blurFill: return "Blur Fill"
+        case .custom: return "Custom"
         }
     }
 }

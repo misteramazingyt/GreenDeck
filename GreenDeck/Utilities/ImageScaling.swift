@@ -10,16 +10,31 @@ enum ImageScaling {
     /// The returned image's extent origin is (0,0) with size == target.
     static func fit(_ image: CIImage, to target: CGSize, mode: CropMode) -> CIImage {
         switch mode {
-        case .fill:
+        case .fill, .custom:
             return aspectFill(image, to: target)
         case .contain:
             return aspectFit(image, to: target, background: nil)
         case .blurFill:
+            // Blurred, enlarged copy fills the frame; the untouched image sits
+            // centered on top with TRANSPARENT padding (so the blur shows through).
             let blurred = aspectFill(blur(image, radius: 40), to: target)
-            let centered = aspectFit(image, to: target, background: nil)
+            let centered = aspectFitTransparent(image, to: target)
             return centered.composited(over: blurred)
                 .cropped(to: CGRect(origin: .zero, size: target))
         }
+    }
+
+    /// Scale to fit (contain) inside the target, centered, with no background
+    /// fill — the surrounding area stays transparent.
+    static func aspectFitTransparent(_ image: CIImage, to target: CGSize) -> CIImage {
+        let extent = image.extent
+        guard extent.width > 0, extent.height > 0 else { return CIImage.empty() }
+        let scale = min(target.width / extent.width, target.height / extent.height)
+        let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let e = scaled.extent
+        let tx = (target.width - e.width) / 2 - e.origin.x
+        let ty = (target.height - e.height) / 2 - e.origin.y
+        return scaled.transformed(by: CGAffineTransform(translationX: tx, y: ty))
     }
 
     /// Scale to fill (cover) the target, cropping the overflow, centered.

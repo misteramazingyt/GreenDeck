@@ -22,15 +22,19 @@ final class Compositor {
         background: CIImage?,
         outputSize: CGSize,
         cropMode: CropMode,
-        mirror: Bool
+        mirror: Bool,
+        personTransform: LayerTransform = .identity,
+        backgroundTransform: LayerTransform = .identity
     ) -> CIImage {
         let outputRect = CGRect(origin: .zero, size: outputSize)
-        let bgFitted = (background.map { ImageScaling.fit($0, to: outputSize, mode: cropMode) })
+        var bgFitted = (background.map { ImageScaling.fit($0, to: outputSize, mode: cropMode) })
             ?? ImageScaling.blackFrame(outputSize)
+        bgFitted = applyUser(bgFitted, backgroundTransform, outputSize)
 
         let sourceExtent = camera.extent
-        let personFitted = applyOutputTransform(camera, sourceExtent: sourceExtent,
+        var personFitted = applyOutputTransform(camera, sourceExtent: sourceExtent,
                                                 target: outputSize, mirror: mirror)
+        personFitted = applyUser(personFitted, personTransform, outputSize)
 
         guard let maskBuffer else {
             // Fallback (Mode B): picture-in-picture of the camera over background.
@@ -49,14 +53,26 @@ final class Compositor {
             )
             mask = mask.transformed(by: toCamera)
         }
-        let maskFitted = applyOutputTransform(mask, sourceExtent: sourceExtent,
+        var maskFitted = applyOutputTransform(mask, sourceExtent: sourceExtent,
                                               target: outputSize, mirror: mirror)
+        maskFitted = applyUser(maskFitted, personTransform, outputSize)
 
         blend.inputImage = personFitted
         blend.backgroundImage = bgFitted
         blend.maskImage = maskFitted
         let result = blend.outputImage ?? bgFitted
         return result.cropped(to: outputRect)
+    }
+
+    /// Apply a user scale/translation about the frame center.
+    private func applyUser(_ img: CIImage, _ t: LayerTransform, _ size: CGSize) -> CIImage {
+        guard !t.isIdentity else { return img }
+        let cx = size.width / 2, cy = size.height / 2
+        var m = CGAffineTransform(translationX: cx, y: cy)
+        m = m.scaledBy(x: t.scale, y: t.scale)
+        m = m.translatedBy(x: -cx, y: -cy)
+        m = m.concatenating(CGAffineTransform(translationX: t.offsetX, y: t.offsetY))
+        return img.transformed(by: m)
     }
 
     // MARK: Transforms
