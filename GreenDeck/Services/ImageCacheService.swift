@@ -31,7 +31,7 @@ actor ImageCacheService {
     /// Download + validate an image, writing it into the cache directory.
     /// Returns the local file name on success.
     func cache(_ background: BackgroundImage) async throws -> String {
-        let (data, response) = try await download(background.imageURL)
+        let (data, response) = try await download(Self.normalize(background.imageURL))
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
             throw CacheError.downloadFailed("HTTP \(code)")
@@ -45,7 +45,7 @@ actor ImageCacheService {
         }
 
         let ext = preferredExtension(for: background.imageURL, data: data)
-        let fileName = "\(background.id).\(ext)"
+        let fileName = "\(background.cacheBaseName).\(ext)"
         let url = FilePaths.imageCacheDirectory.appendingPathComponent(fileName)
         try data.write(to: url, options: .atomic)
         Log.cache.info("Cached \(background.id) -> \(fileName)")
@@ -95,6 +95,25 @@ actor ImageCacheService {
     }
 
     // MARK: Helpers
+
+    /// Rewrite common Google Drive share links to a direct-download endpoint
+    /// so URLSession receives image bytes instead of an HTML viewer page.
+    static func normalize(_ url: URL) -> URL {
+        let s = url.absoluteString
+        guard s.contains("drive.google.com") else { return url }
+        // Extract the file id from /file/d/{id}/, ?id={id}, or /d/{id}.
+        let patterns = [#"/file/d/([A-Za-z0-9_-]+)"#, #"[?&]id=([A-Za-z0-9_-]+)"#, #"/d/([A-Za-z0-9_-]+)"#]
+        for p in patterns {
+            if let r = s.range(of: p, options: .regularExpression) {
+                let frag = String(s[r])
+                if let idRange = frag.range(of: #"[A-Za-z0-9_-]+$"#, options: .regularExpression) {
+                    let id = String(frag[idRange])
+                    return URL(string: "https://drive.google.com/uc?export=download&id=\(id)") ?? url
+                }
+            }
+        }
+        return url
+    }
 
     private func download(_ url: URL) async throws -> (Data, URLResponse) {
         do {

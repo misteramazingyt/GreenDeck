@@ -27,6 +27,16 @@ struct PersistenceService {
         save(items, to: FilePaths.backgroundsStoreURL)
     }
 
+    // MARK: Decks
+
+    func loadDecks() -> [Deck] {
+        load([Deck].self, from: FilePaths.decksStoreURL) ?? []
+    }
+
+    func saveDecks(_ items: [Deck]) {
+        save(items, to: FilePaths.decksStoreURL)
+    }
+
     // MARK: Segments
 
     func loadSegments() -> [RecordingSegment] {

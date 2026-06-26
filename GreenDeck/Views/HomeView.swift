@@ -10,6 +10,9 @@ struct HomeView: View {
                     if !state.hasSheetURL {
                         setupPrompt
                     }
+                    if !state.decks.isEmpty {
+                        deckPicker
+                    }
                     statusCard
                     actionGrid
                 }
@@ -40,11 +43,29 @@ struct HomeView: View {
         .buttonStyle(.plain)
     }
 
+    private var deckPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Deck").font(.headline)
+            Picker("Deck", selection: Binding(
+                get: { state.selectedDeck?.id ?? "" },
+                set: { id in if let d = state.decks.first(where: { $0.id == id }) { state.selectDeck(d) } }
+            )) {
+                ForEach(state.decks) { deck in
+                    Text(deck.name).tag(deck.id)
+                }
+            }
+            .pickerStyle(.menu)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.indigo.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+    }
+
     private var statusCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Deck status").font(.headline)
-            row("Images synced", "\(state.backgrounds.count)")
-            row("Cached", "\(state.cachedCount) / \(state.backgrounds.count)")
+            Text(state.selectedDeck.map { "Deck: \($0.name)" } ?? "Deck status").font(.headline)
+            row("Images in deck", "\(state.deckImageCount)")
+            row("Cached", "\(state.cachedCount) / \(state.deckImageCount)")
             row("New", "\(state.newCount)")
             row("Starred", "\(state.starredCount)")
             row("Used", "\(state.usedCount)")

@@ -33,6 +33,8 @@ enum CacheStatus: String, Codable {
 /// and cached locally so recording works fully offline.
 struct BackgroundImage: Identifiable, Codable, Hashable {
     var id: String
+    /// The deck (spreadsheet tab) this image belongs to. Empty for legacy data.
+    var deckID: String
     var title: String
     var imageURL: URL
     var localFileName: String?
@@ -55,6 +57,7 @@ struct BackgroundImage: Identifiable, Codable, Hashable {
 
     init(
         id: String,
+        deckID: String = "",
         title: String = "",
         imageURL: URL,
         localFileName: String? = nil,
@@ -72,6 +75,7 @@ struct BackgroundImage: Identifiable, Codable, Hashable {
         usedCount: Int = 0
     ) {
         self.id = id
+        self.deckID = deckID
         self.title = title
         self.imageURL = imageURL
         self.localFileName = localFileName
@@ -90,6 +94,13 @@ struct BackgroundImage: Identifiable, Codable, Hashable {
     }
 
     var isCached: Bool { cacheStatus == .cached && localFileName != nil }
+
+    /// Filesystem-safe base name for the cached file, unique across decks.
+    var cacheBaseName: String {
+        let raw = deckID.isEmpty ? id : "\(deckID)_\(id)"
+        let allowed = CharacterSet.alphanumerics
+        return String(raw.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
+    }
 
     /// Absolute URL to the cached image file, if present.
     var localFileURL: URL? {

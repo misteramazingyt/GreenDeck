@@ -56,7 +56,10 @@ enum OutputResolution: String, Codable, CaseIterable, Identifiable {
 
 /// User-configurable app settings. Persisted between launches.
 struct AppSettings: Codable {
-    var sheetCSVURL: URL?
+    /// Any Google Sheets URL (the whole spreadsheet) or a direct CSV URL.
+    var spreadsheetURL: URL?
+    /// The deck (tab) currently selected for browsing/recording.
+    var selectedDeckID: String?
     var defaultCropMode: CropMode
     var segmentationQuality: SegmentationQuality
     var outputResolution: OutputResolution
@@ -67,7 +70,8 @@ struct AppSettings: Codable {
     var mirrorExport: Bool
 
     static let `default` = AppSettings(
-        sheetCSVURL: nil,
+        spreadsheetURL: nil,
+        selectedDeckID: nil,
         defaultCropMode: .fill,
         segmentationQuality: .balanced,
         outputResolution: .p1080x1920,
@@ -77,4 +81,36 @@ struct AppSettings: Codable {
         mirrorPreview: true,
         mirrorExport: false
     )
+
+    // Tolerant decoding so adding/removing fields never wipes existing settings.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = AppSettings.default
+        spreadsheetURL = try c.decodeIfPresent(URL.self, forKey: .spreadsheetURL)
+        selectedDeckID = try c.decodeIfPresent(String.self, forKey: .selectedDeckID)
+        defaultCropMode = try c.decodeIfPresent(CropMode.self, forKey: .defaultCropMode) ?? d.defaultCropMode
+        segmentationQuality = try c.decodeIfPresent(SegmentationQuality.self, forKey: .segmentationQuality) ?? d.segmentationQuality
+        outputResolution = try c.decodeIfPresent(OutputResolution.self, forKey: .outputResolution) ?? d.outputResolution
+        microphoneEnabled = try c.decodeIfPresent(Bool.self, forKey: .microphoneEnabled) ?? d.microphoneEnabled
+        showCaptionOverlay = try c.decodeIfPresent(Bool.self, forKey: .showCaptionOverlay) ?? d.showCaptionOverlay
+        showPrivateNotesDuringRecording = try c.decodeIfPresent(Bool.self, forKey: .showPrivateNotesDuringRecording) ?? d.showPrivateNotesDuringRecording
+        mirrorPreview = try c.decodeIfPresent(Bool.self, forKey: .mirrorPreview) ?? d.mirrorPreview
+        mirrorExport = try c.decodeIfPresent(Bool.self, forKey: .mirrorExport) ?? d.mirrorExport
+    }
+
+    init(spreadsheetURL: URL?, selectedDeckID: String?, defaultCropMode: CropMode,
+         segmentationQuality: SegmentationQuality, outputResolution: OutputResolution,
+         microphoneEnabled: Bool, showCaptionOverlay: Bool,
+         showPrivateNotesDuringRecording: Bool, mirrorPreview: Bool, mirrorExport: Bool) {
+        self.spreadsheetURL = spreadsheetURL
+        self.selectedDeckID = selectedDeckID
+        self.defaultCropMode = defaultCropMode
+        self.segmentationQuality = segmentationQuality
+        self.outputResolution = outputResolution
+        self.microphoneEnabled = microphoneEnabled
+        self.showCaptionOverlay = showCaptionOverlay
+        self.showPrivateNotesDuringRecording = showPrivateNotesDuringRecording
+        self.mirrorPreview = mirrorPreview
+        self.mirrorExport = mirrorExport
+    }
 }

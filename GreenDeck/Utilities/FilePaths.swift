@@ -23,6 +23,10 @@ enum FilePaths {
         documentsDirectory.appendingPathComponent("backgrounds.json")
     }
 
+    static var decksStoreURL: URL {
+        documentsDirectory.appendingPathComponent("decks.json")
+    }
+
     static var segmentsStoreURL: URL {
         documentsDirectory.appendingPathComponent("segments.json")
     }

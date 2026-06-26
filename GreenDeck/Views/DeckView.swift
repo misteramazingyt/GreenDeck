@@ -49,9 +49,26 @@ struct DeckView: View {
                 .padding(10)
             }
         }
-        .navigationTitle("Deck")
+        .navigationTitle(state.selectedDeck?.name ?? "Deck")
         .searchable(text: $search, prompt: "Search title, tags, notes")
         .toolbar {
+            if state.decks.count > 1 {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        ForEach(state.decks) { deck in
+                            Button {
+                                state.selectDeck(deck)
+                            } label: {
+                                if deck.id == state.selectedDeck?.id {
+                                    Label(deck.name, systemImage: "checkmark")
+                                } else {
+                                    Text(deck.name)
+                                }
+                            }
+                        }
+                    } label: { Image(systemName: "rectangle.stack") }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Picker("Sort", selection: $sort) {
@@ -125,7 +142,7 @@ struct DeckView: View {
     }
 
     private var filtered: [BackgroundImage] {
-        var items = state.backgrounds
+        var items = state.deckBackgrounds
 
         switch filter {
         case .all: break

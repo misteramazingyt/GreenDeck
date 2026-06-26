@@ -43,19 +43,17 @@ struct SheetSyncService {
 
     let cache: ImageCacheService
 
-    /// Performs a full sync. `existing` is the current local set; the returned
-    /// array is the merged result. Progress is reported via `onProgress`.
-    func sync(
-        url: URL?,
+    /// Sync a single deck (spreadsheet tab). `existing` is that deck's current
+    /// local set; the returned array is the merged result for the deck.
+    func syncDeck(
+        _ deck: Deck,
         existing: [BackgroundImage],
         onProgress: @escaping (String) -> Void = { _ in }
     ) async throws -> (merged: [BackgroundImage], report: SyncReport) {
-        guard let url else { throw SyncError.noURL }
+        onProgress("Downloading \(deck.name)…")
+        let text = try await downloadCSV(deck.csvURL)
 
-        onProgress("Downloading CSV…")
-        let text = try await downloadCSV(url)
-
-        onProgress("Parsing rows…")
+        onProgress("Parsing \(deck.name)…")
         let rows = CSVParser.parse(text)
         var report = SyncReport()
         report.rowsFound = rows.count
@@ -66,7 +64,7 @@ struct SheetSyncService {
         var seenIDs = Set<String>()
 
         for row in rows {
-            switch makeBackground(from: row, existing: byID) {
+            switch makeBackground(from: row, deck: deck, existing: byID) {
             case .failure(let message):
                 report.invalidRows += 1
                 report.invalidRowMessages.append(message)
@@ -86,7 +84,7 @@ struct SheetSyncService {
             }
         }
 
-        guard !seenIDs.isEmpty else { throw SyncError.emptyOrInvalid }
+        // An empty tab is not an error during a multi-deck sync; just return it.
 
         // Download any images not yet cached.
         var merged = Array(byID.values)
@@ -125,6 +123,7 @@ struct SheetSyncService {
 
     private func makeBackground(
         from row: [String: String],
+        deck: Deck,
         existing: [String: BackgroundImage]
     ) -> RowResult {
         let urlString = (row["image_url"] ?? "").trimmingCharacters(in: .whitespaces)
@@ -154,6 +153,7 @@ struct SheetSyncService {
         if let prior = existing[id] {
             // Preserve local workflow state; refresh metadata from the sheet.
             var bg = prior
+            bg.deckID = deck.id
             bg.title = row["title"] ?? bg.title
             bg.imageURL = imageURL
             bg.tags = tags
@@ -171,6 +171,7 @@ struct SheetSyncService {
 
         let bg = BackgroundImage(
             id: id,
+            deckID: deck.id,
             title: row["title"] ?? "",
             imageURL: imageURL,
             tags: tags,

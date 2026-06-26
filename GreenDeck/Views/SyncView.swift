@@ -34,6 +34,10 @@ struct SyncView: View {
                     errorBox(error)
                 }
 
+                if !state.decks.isEmpty {
+                    decksBox
+                }
+
                 if let report = state.lastSyncReport {
                     reportBox(report)
                 }
@@ -52,6 +56,23 @@ struct SyncView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var decksBox: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Decks (\(state.decks.count))").font(.headline)
+            ForEach(state.decks) { deck in
+                let count = state.backgrounds.filter { $0.deckID == deck.id }.count
+                HStack {
+                    Text(deck.name)
+                    Spacer()
+                    Text("\(count) images").foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.indigo.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func reportBox(_ report: SyncReport) -> some View {

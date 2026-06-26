@@ -9,13 +9,13 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Google Sheet") {
-                TextField("Published CSV URL", text: $urlText, axis: .vertical)
+                TextField("Google Sheets URL", text: $urlText, axis: .vertical)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
                 Button("Save URL") { saveURL() }
                     .disabled(URL(string: urlText.trimmingCharacters(in: .whitespacesAndNewlines)) == nil)
-                Text("Publish a sheet via File → Share → Publish to web, choose CSV, and paste the link here.")
+                Text("Paste the whole spreadsheet link (the one in your browser). Each tab becomes a deck. Share it as “Anyone with the link can view.” Tabs named starting with . or _ are ignored.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
 
@@ -42,7 +42,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
-        .onAppear { urlText = state.settings.sheetCSVURL?.absoluteString ?? "" }
+        .onAppear { urlText = state.settings.spreadsheetURL?.absoluteString ?? "" }
         .confirmationDialog("Clear all cached images?", isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("Clear cache", role: .destructive) { state.clearCache() }
         }
@@ -53,7 +53,7 @@ struct SettingsView: View {
 
     private func saveURL() {
         let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        state.updateSettings { $0.sheetCSVURL = URL(string: trimmed) }
+        state.updateSettings { $0.spreadsheetURL = URL(string: trimmed) }
     }
 
     private var cropBinding: Binding<CropMode> {
